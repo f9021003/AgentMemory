@@ -250,7 +250,11 @@ Plugin 位於 `clients/opencode/agentmemory`（`plugin.yaml`、`package.json`、
 
 ```bash
 cp -r /path/to/AgentMemory/clients/opencode/agentmemory ~/agentmemory-opencode
+cd ~/agentmemory-opencode
+npm install
 ```
+
+`@opencode-ai/plugin` 是執行時相依套件，OpenCode 不會提供。略過 `npm install` 會讓 plugin 載入失敗（工具不會出現，Desktop 的 plugin 也沒有明確錯誤）。
 
 再加進全域的 `~/.config/opencode/opencode.jsonc`（`baseUrl`、`userKey`、`teamId`、`agentId` 四個都要填）：
 

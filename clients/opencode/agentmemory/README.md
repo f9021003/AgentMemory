@@ -31,7 +31,15 @@ Pick one of the two methods.
 ### Method A — Load from the repo (development)
 
 1. Copy `clients/opencode/agentmemory` anywhere you like (e.g. `~/agentmemory-opencode`).
-2. Add this to your global `~/.config/opencode/opencode.jsonc`:
+2. Install its runtime dependencies (OpenCode does **not** provide
+   `@opencode-ai/plugin`; skipping this makes the plugin fail to load):
+
+   ```bash
+   cd ~/agentmemory-opencode
+   npm install
+   ```
+
+3. Add this to your global `~/.config/opencode/opencode.jsonc`:
 
 ```json
 {
@@ -81,9 +89,10 @@ then in `~/.config/opencode/opencode.jsonc`:
 }
 ```
 
-> OpenCode loads `@opencode-ai/plugin` from its own runtime, so no local install
-> is required. During development you can type-check and test with:
-> `cd clients/opencode/agentmemory && bun run typecheck && bun test`.
+> `@opencode-ai/plugin` is a runtime dependency. It is installed automatically
+> for npm-published plugins, but a plugin loaded from a local path needs
+> `npm install` first. During development you can type-check and test with:
+> `cd clients/opencode/agentmemory && npm install && npm run typecheck && bun test`.
 
 ## Configuration
 
