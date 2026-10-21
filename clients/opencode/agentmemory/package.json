@@ -1,0 +1,29 @@
+{
+  "name": "agentmemory-opencode",
+  "version": "1.0.0",
+  "description": "AgentMemory plugin for OpenCode: recall, capture, stats via the memory-core HTTP API (8420).",
+  "license": "MIT",
+  "keywords": [
+    "agentmemory",
+    "opencode",
+    "memory",
+    "mcp",
+    "open-code"
+  ],
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@opencode-ai/plugin": "^1.0.0",
+    "typescript": "^7.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": "^1.0.0"
+  }
+}

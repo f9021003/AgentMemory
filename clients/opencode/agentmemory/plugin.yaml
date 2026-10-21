@@ -1,0 +1,5 @@
+name: agentmemory
+version: 1.0.0
+description: "AgentMemory — self-hosted memory core for OpenCode via HTTP API (8420). Recall, L0 capture, stats, and explicit tool calls."
+repository: https://github.com/hsuanshao/AgentMemory
+license: MIT

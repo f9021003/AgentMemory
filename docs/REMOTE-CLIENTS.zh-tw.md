@@ -2,7 +2,7 @@
 
 [English](./REMOTE-CLIENTS.md) | 繁體中文
 
-本文說明最常見的部署方式：**一台 Agent Memory 伺服器**（memory-core + Memory Panel）放在你管理的主機上，**其他機器上的 agent**（Claude Code、Codex、Antigravity、Hermes）透過網路讀寫記憶。
+本文說明最常見的部署方式：**一台 Agent Memory 伺服器**（memory-core + Memory Panel）放在你管理的主機上，**其他機器上的 agent**（Claude Code、Codex、Antigravity、Hermes、OpenCode）透過網路讀寫記憶。
 
 ```text
  筆電 / 工作站                                     伺服器主機
@@ -11,12 +11,13 @@
 │ Codex ───────┤                │           │ 反向代理（TLS）              │
 │ Antigravity ─┼─ amem ─────────┼──────────►│   └─► memory-core :8420      │
 │ Hermes ──────┘  (user key)    │           │ Memory Panel :8125（管理者） │
-│  ~/.config/agent-memory/      │           │ SQLite 或 Postgres（+Redis） │
-│  ~/.local/share/agent-memory/ │           └──────────────────────────────┘
-└───────────────────────────────┘
+│ OpenCode ──────── HTTP ───────┼──────────►│ SQLite 或 Postgres（+Redis） │
+│  ~/.config/agent-memory/      │           │                              │
+│  ~/.local/share/agent-memory/ │           │ 建立 team／agent 見第 3 節   │
+└───────────────────────────────┘           └──────────────────────────────┘
 ```
 
-- 每台 client 機器只需要一個小型執行檔 **`amem`**。各工具的整合（Claude Code、Codex、Antigravity 的 plugin，以及 Hermes memory provider）都只是呼叫 `amem`。設定保存、secret 過濾、離線佇列都由它負責。
+- 每台 client 機器只需要一個小型執行檔 **`amem`**。各工具的整合（Claude Code、Codex、Antigravity 的 plugin，以及 Hermes memory provider）都只是呼叫 `amem`。設定保存、secret 過濾、離線佇列都由它負責。OpenCode plugin 是例外：它直接呼叫 core HTTP API，不需要 `amem`（見第 9 節）。
 - Client 使用**個人的 user key**（`sk-mem-…`）驗證，完全不需要伺服器的 `AGENT_MEMORY_API_KEY`。
 
 ## 目錄
@@ -29,9 +30,10 @@
 6. [Antigravity](#6-antigravity)
 7. [Codex CLI](#7-codex-cli)
 8. [Hermes Agent](#8-hermes-agent)
-9. [從上一版升級](#9-從上一版升級)
-10. [哪些資料會送出、哪些不會](#10-哪些資料會送出哪些不會)
-11. [疑難排解](#11-疑難排解)
+9. [OpenCode](#9-opencode)
+10. [從上一版升級](#10-從上一版升級)
+11. [哪些資料會送出、哪些不會](#11-哪些資料會送出哪些不會)
+12. [疑難排解](#12-疑難排解)
 
 ---
 
@@ -84,7 +86,7 @@
 1. **Users → New user**：立刻複製產生的 `sk-mem-…` key，它只會顯示一次。在該使用者的 **Keys** 可以再發新 key（建議每台機器一把），之後也能撤銷。
 2. **Teams → New team**：選擇 owner（owner 會成為 team admin）。
 3. 選取 team → **Members → Assign user**：加入要共用這個 team 記憶的使用者。
-4. 選取 team → **Agents → New agent**：例如 `claude-code`、`antigravity`、`hermes`。
+4. 選取 team → **Agents → New agent**：例如 `claude-code`、`antigravity`、`hermes`、`opencode`。
 
 交給每位使用者四個值：**伺服器 URL**、**user key**、**team_id**（`team-…`）、**agent_id**（`agt-…`）。id 可以在 Teams 與 Agents 表格中看到。若伺服器使用的記憶 instance 不是 `default`，也要提供 **service id**。
 
@@ -135,7 +137,7 @@ amem status                 # 顯示設定（key 會遮蔽）與佇列數量
 amem recall "release plan"  # 印出 agent 會收到的內容
 ```
 
-同一台機器上的所有工具共用這份設定。也可以用 `AMEM_SERVER_URL`、`AMEM_USER_KEY`、`AMEM_TEAM_ID`、`AMEM_AGENT_ID`、`AMEM_SERVICE_ID` 針對單一程序覆寫。若要讓每個工具使用不同的 agent，請使用下面各 plugin 的設定，或在該工具的環境變數中設定 `AMEM_AGENT_ID`。
+同一台機器上的所有工具共用這份設定（OpenCode 例外，見第 9 節）。也可以用 `AMEM_SERVER_URL`、`AMEM_USER_KEY`、`AMEM_TEAM_ID`、`AMEM_AGENT_ID`、`AMEM_SERVICE_ID` 針對單一程序覆寫。若要讓每個工具使用不同的 agent，請使用下面各 plugin 的設定，或在該工具的環境變數中設定 `AMEM_AGENT_ID`。
 
 ## 5. Claude Code
 
@@ -237,13 +239,78 @@ Hermes 會讀取 `amem login` 的設定。Provider 的行為：
 
 若 Hermes 的 `PATH` 找不到 `amem`，請在 Hermes 的環境變數設定 `AMEM_BIN=/完整路徑/amem`。舊版 provider 用的 `~/.hermes/.env` 中 `AGENTMEMORY_API_KEY`、`AGENTMEMORY_BASE_URL`、`AGENTMEMORY_SERVICE_ID` 已不再讀取，可以刪除。
 
-## 9. 從上一版升級
+## 9. OpenCode
 
-上一版的 client 可以不指定 team 和 agent 就寫入，這些資料都在舊的 `default` 桶裡，而新版資料平面已不再提供這個桶。請在伺服器上更新後的安裝目錄執行 `./upgrade.sh`。它會先備份，接著重建服務，把舊資料搬到你指定的 team 與 agent，最後印出 client 要用的 key 和 `amem login` 指令。每個步驟、全手動的作法和還原方式，都寫在 [UPGRADE.zh-tw.md](UPGRADE.zh-tw.md)。之後依第 4–8 節設定各個 client。
+Plugin 位於 `clients/opencode/agentmemory`（`plugin.yaml`、`package.json`、`src/`）。它**直接呼叫 memory-core 的 HTTP API**（`https://memory.example.com`，即 :8420），因此：
+
+- 不需要安裝 `amem`，也**不會**讀 `amem login` 的 `~/.config/agent-memory/client.json`。Server URL、user key、team／agent 都要寫在 OpenCode 自己的設定檔裡。
+- 也沒有 `amem` 的 secret 過濾與離線佇列（見第 11 節）；連不上伺服器時該次寫入會失敗，錯誤印在 OpenCode 的 console（`[agentmemory] ERROR …`）。
+
+需要 OpenCode **v2**。先把目錄複製到任意位置：
+
+```bash
+cp -r /path/to/AgentMemory/clients/opencode/agentmemory ~/agentmemory-opencode
+```
+
+再加進全域的 `~/.config/opencode/opencode.jsonc`（`baseUrl`、`userKey`、`teamId`、`agentId` 四個都要填）：
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugin": [
+    [
+      "~/agentmemory-opencode",
+      {
+        "baseUrl": "https://memory.example.com",
+        "userKey": "sk-mem-…",
+        "serviceId": "default",
+        "teamId": "team-xxxxxxxxxxxx",
+        "agentId": "agt-xxxxxxxxxxxx"
+      }
+    ]
+  ]
+}
+```
+
+也可以自行發布到 npm（`npm pkg set name="@yourname/agentmemory-opencode" && npm publish`），然後把路徑換成套件名稱。
+
+設定選項：
+
+| 選項 | 預設 | 說明 |
+| --- | --- | --- |
+| `baseUrl` | `http://localhost:8420` | 伺服器位址。 |
+| `userKey` | — | 個人的 `sk-mem-…` user key。**必填。** |
+| `serviceId` | `default` | 記憶 instance id，伺服器不是 `default` 時要一起改。 |
+| `teamId` | — | team id。**必填**，沒有 `default` team。 |
+| `agentId` | — | agent id。**必填**，且必須屬於 `teamId`。 |
+| `apiKey` | `null` | `AGENT_MEMORY_API_KEY`。只有 Bearer 範圍的 `v3/stats/overview`（generation logs）會用到，一般可留空。 |
+
+缺 `userKey`、`teamId` 或 `agentId` 會在載入 plugin 時直接報錯，不會退回 `default` 範圍。
+
+Plugin 的行為：
+
+| 項目 | 行為 |
+| --- | --- |
+| `session.idle` | session 閒置時，把整個 session 的訊息寫入 L0：文字，以及展開成 user／assistant 對的 tool call 與結果。 |
+| 工具 `agentmemory_recall` | 搜尋記憶（facts、過去的決定、偏好、persona）。 |
+| 工具 `agentmemory_add` | 手動寫入一則訊息，可附 `toolCalls`／`toolResults`。 |
+| 工具 `agentmemory_conversations` | 列出目前 team + agent 的 session 與訊息數。 |
+| 工具 `agentmemory_stats` | 顯示 L0–L3 與 skill 的數量（generation logs 是整個 instance 的數字）。 |
+
+注意事項：
+
+- **不沿用 `amem login`：** Claude Code、Codex、Antigravity、Hermes 都會讀 `~/.config/agent-memory/client.json`，OpenCode 必須在 `opencode.jsonc` 裡各填一份。同一台機器想讓 OpenCode 用另一個 agent，就把 `agentId` 填成別的值。
+- **每次 idle 送整個 session：** 沒有游標或去重，session id 是 `auto:<時間戳>`，所以 session 越長送出的量越大，同一段對話也會以不同的 session id 重複進入 L0。
+- 載入時會先打一次 `/health`，連不上只會印 warning，不影響 OpenCode 啟動。
+- 開發時的型別檢查與測試：`cd clients/opencode/agentmemory && bun run typecheck && bun test`。
+
+## 10. 從上一版升級
+
+上一版的 client 可以不指定 team 和 agent 就寫入，這些資料都在舊的 `default` 桶裡，而新版資料平面已不再提供這個桶。請在伺服器上更新後的安裝目錄執行 `./upgrade.sh`。它會先備份，接著重建服務，把舊資料搬到你指定的 team 與 agent，最後印出 client 要用的 key 和 `amem login` 指令。每個步驟、全手動的作法和還原方式，都寫在 [UPGRADE.zh-tw.md](UPGRADE.zh-tw.md)。之後依第 4–9 節設定各個 client。OpenCode 不使用 `amem`，只要把 `opencode.jsonc` 裡的 `teamId`／`agentId` 改成新的值即可。
 
 日後要從某台機器移除 client，在 checkout 目錄執行 `./uninstall.sh client` 即可；可以先加 `--dry-run` 看會移除哪些東西。詳見 [UNINSTALL.zh-tw.md](UNINSTALL.zh-tw.md)。
 
-## 10. 哪些資料會送出、哪些不會
+## 11. 哪些資料會送出、哪些不會
 
 - **文字**（你的訊息與 agent 的回覆）送到 L0，再由伺服器的管線蒸餾成 atoms（L1）、場景（L2）與 persona（L3）。
 - **Tool call 與結果**送到 skill buffer，讓反覆出現、大量使用工具的工作能整理成可重用的 skill。每個 tool 結果只保留前 8,000 字元，每則訊息最多 32,000 字元。
@@ -259,8 +326,9 @@ Hermes 會讀取 `amem login` 的設定。Provider 的行為：
   符合的內容會換成 `[REDACTED:<種類>]`。過濾是以樣式比對進行，請把它當成安全網，而不是保證。
 - **離線佇列：** 伺服器連不上（或 key 被拒）時，資料會暫存在 `~/.local/share/agent-memory/queue/`，只有你本人可讀。下一輪會依序補送，也可以手動執行 `amem flush`。最多保留 2,000 筆請求，超過時從最舊的開始丟棄。被伺服器判定為格式錯誤的請求會移到 `queue/failed/` 供檢查。
 - **子 agent**（Claude Code 的 side chain、Hermes 的子 agent）不會被記錄。
+- **OpenCode plugin 不經過 `amem`：** 上面的 secret 過濾與離線佇列都不適用，內容會直接送到 core API，連不上就當次失敗（見第 9 節）。
 
-## 11. 疑難排解
+## 12. 疑難排解
 
 | 症狀 | 原因／解法 |
 | --- | --- |
@@ -271,7 +339,9 @@ Hermes 會讀取 `amem login` 的設定。Provider 的行為：
 | `amem status` 顯示佇列一直增加 | 這台機器連不到伺服器。請檢查 URL 與 TLS，然後執行 `amem flush`。 |
 | 什麼都 recall 不到 | 新記憶要等伺服器管線蒸餾後才會出現，最多需要幾分鐘。請到 Panel 的 Dashboard 查看管線錯誤（例如伺服器沒有設定 LLM）。 |
 | Hook 看起來沒有作用 | 查看 `~/.local/share/agent-memory/amem.log`，hook 不會大聲報錯。並確認工具的 `PATH` 找得到 `amem`。 |
-| Hermes 仍在使用舊版 provider | `~/.hermes/hermes-agent/plugins/memory/agentmemory` 中的舊版優先順序較高，請刪除它（見第 7 節）。 |
+| Hermes 仍在使用舊版 provider | `~/.hermes/hermes-agent/plugins/memory/agentmemory` 中的舊版優先順序較高，請刪除它（見第 8 節）。 |
+| OpenCode 載入時報 `missing required AgentMemory config` | `opencode.jsonc` 缺 `userKey`、`teamId` 或 `agentId`。OpenCode 不會沿用 `amem login` 的設定（見第 9 節）。 |
+| OpenCode 的訊息沒有進到記憶 | 看 OpenCode console 的 `[agentmemory] ERROR`：多半是 `baseUrl` 不對、user key 無效，或該次 `session.idle` 寫入失敗。 |
 
 Client 機器上的檔案：
 
