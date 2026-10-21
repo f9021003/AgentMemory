@@ -1,5 +1,5 @@
 import { tool as makeTool } from "@opencode-ai/plugin";
-import type { buildClient } from "./client";
+import type { buildClient } from "./client.ts";
 
 /**
  * Create the AgentMemory tools bound to a single AgentMemory client.

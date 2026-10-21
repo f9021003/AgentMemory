@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "AgentMemory plugin for OpenCode: recall, capture, stats via the memory-core HTTP API (8420).",
   "license": "MIT",
+  "type": "module",
   "keywords": [
     "agentmemory",
     "opencode",

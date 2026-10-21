@@ -1,5 +1,5 @@
 import type { PluginOptions } from "@opencode-ai/plugin";
-import type { AgentMemoryConfig } from "./client";
+import type { AgentMemoryConfig } from "./client.ts";
 
 export const DEFAULT_BASE_URL = "http://localhost:8420";
 export const DEFAULT_SERVICE_ID = "default";

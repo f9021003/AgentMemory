@@ -1,9 +1,10 @@
 import type { PluginInput, PluginOptions } from "@opencode-ai/plugin";
 import type { Event, EventSessionIdle } from "@opencode-ai/sdk";
-import { createTools } from "./tools";
-import { makeSessionIdleHook, type SessionMessage, type Logger } from "./hooks";
-import { buildClient } from "./client";
-import { resolveConfig } from "./config";
+import { createTools } from "./tools.ts";
+import { makeSessionIdleHook, type SessionMessage, type Logger } from "./hooks.ts";
+import { buildClient } from "./client.ts";
+import { resolveConfig } from "./config.ts";
+
 
 /**
  * The OpenCode plugin entry.
