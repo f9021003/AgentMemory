@@ -21,7 +21,7 @@
 
 ## 1. 系統總覽
 
-Agent Memory 是自架的 AI agent 記憶服務。Agent 把對話送進來，服務在背景把它蒸餾成事實、場景和 persona，並在下一個回合開始前把相關的部分送回去。整套服務不依賴任何廠商的雲端產品：儲存用 SQLite 或 Postgres，LLM 可以是任何 OpenAI 相容的 endpoint，或本機的 CLI（Claude Code、Antigravity、Codex）。
+Agent Memory 是自架的 AI agent 記憶服務。Agent 把對話送進來，服務在背景把它蒸餾成事實、場景和 persona，並在下一個回合開始前把相關的部分送回去。整套服務不依賴任何廠商的雲端產品：儲存用 SQLite 或 Postgres，LLM 可以是任何 OpenAI 相容的 endpoint，或本機的 CLI（Claude Code、Antigravity、Codex、OpenCode）。
 
 ```mermaid
 flowchart LR
@@ -37,7 +37,7 @@ flowchart LR
     PANEL["Monitor Panel<br/>Hono BFF + React · :8125"]
     STORE[("Storage<br/>SQLite | Postgres<br/>+ files in /data")]
     COORD[("Coordination<br/>local | Redis")]
-    LLM["LLM<br/>OpenAI-compatible API<br/>or claude / agy / codex CLI"]
+    LLM["LLM<br/>OpenAI-compatible API<br/>or claude / agy / codex / opencode CLI"]
   end
   Browser((Browser)) -- user key --> PANEL
   AMEM -- "HTTPS, x-memory-user-key" --> CORE
@@ -213,7 +213,7 @@ sequenceDiagram
 
 - **決策**放在 `memory_domain::pipeline` 和 `PipelineService`。Worker 只負責依 session/profile 串行執行 job、合併重複的 job，以及重試。
 - **游標**是儲存層配發、不會重複使用的序號（`after_seq`）。時間戳相同或倒填都不會漏掉資料。升級搬移資料時會保留游標。
-- **LLM 輸出**必須符合嚴格的 JSON（或 markdown）格式，解析時則相對寬鬆，能處理 `<think>` 區塊和 code fence。自訂的 memory prompt 會附加在保護格式的框架內。若 LLM 是 CLI，memory-core 會在 `/workspace` 執行 `claude`、`agy` 或 `codex exec`，prompt 以參數或 stdin 傳入。
+- **LLM 輸出**必須符合嚴格的 JSON（或 markdown）格式，解析時則相對寬鬆，能處理 `<think>` 區塊和 code fence。自訂的 memory prompt 會附加在保護格式的框架內。若 LLM 是 CLI，memory-core 會在 `/workspace` 執行 `claude`、`agy`、`codex exec` 或 `opencode run`，prompt 以參數或 stdin 傳入。
 - **狀態**可以從 `POST /v3/pipeline/status`（佇列、worker 指標、各範圍的游標）和 Panel 查看。
 
 ## 5. 召回
@@ -339,7 +339,7 @@ flowchart TB
 - Docker Compose 的服務：`memory-core`、`memory-panel`，以及同名 profile 下的 `redis`、`postgres`。
 - Volume：
   - `memory-core-data`、`redis-data`、`postgres-data`
-  - `claude-config`、`antigravity-config`、`codex-config`：CLI 的登入資料
+  - `claude-config`、`antigravity-config`、`codex-config`、`opencode-config`：CLI 的登入資料（OpenCode 另含 session 歷史）
   - `PROJECT_DIR` 以 bind mount 掛在 `/workspace`，給 CLI 型的 LLM 使用
 - 映像標記為 `memory-core:${MEMORY_IMAGE_TAG}` 和 `memory-panel:${MEMORY_IMAGE_TAG}`，預設是 `local`。同一台主機上的每套部署要用不同的 tag，否則 build 其中一套會覆蓋另一套的映像。
 - 多節點需要 `storage.backend = postgres`、`coordination.backend = redis`，以及共享的 `<data>` volume。既有的 SQLite 安裝可以用 `migrate-to-postgres.sh` 搬過去（[MIGRATE-TO-POSTGRES.zh-tw.md](MIGRATE-TO-POSTGRES.zh-tw.md)）。

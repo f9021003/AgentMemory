@@ -145,6 +145,7 @@ jobs:
             docker exec smoke claude --version
             docker exec smoke codex --version
             docker exec smoke test -x /home/memory/.local/bin/agy
+            docker exec smoke opencode --version
           else
             docker run -d --name smoke -p 8125:8125 smoke-panel
             health http://127.0.0.1:8125/health

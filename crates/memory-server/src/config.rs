@@ -504,6 +504,9 @@ impl Config {
         set(&mut self.llm.base_url, "AGENT_MEMORY_LLM_BASE_URL");
         set(&mut self.llm.model, "AGENT_MEMORY_LLM_MODEL");
         set(&mut self.llm.provider, "AGENT_MEMORY_LLM_PROVIDER");
+        if let Some(ms) = env("AGENT_MEMORY_LLM_TIMEOUT_MS").and_then(|t| t.parse().ok()) {
+            self.llm.timeout_ms = ms;
+        }
         set(&mut self.storage.backend, "AGENT_MEMORY_STORAGE_BACKEND");
         set(&mut self.storage.postgres.url, "AGENT_MEMORY_POSTGRES_URL");
         set(

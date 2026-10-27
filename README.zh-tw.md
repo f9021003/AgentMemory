@@ -20,7 +20,7 @@
 
 1. **儲存後端**：SQLite（預設，免安裝）／既有的 PostgreSQL（輸入 URL，先從容器內測試連線）／幫我用 Docker 啟動 PostgreSQL（pgvector）
 2. **協調後端**：單機（預設）／既有的 Redis／幫我用 Docker 啟動 Redis
-3. **LLM**：OpenAI 相容 API／Claude Code CLI／Antigravity CLI／Codex CLI
+3. **LLM**：OpenAI 相容 API／Claude Code CLI／Antigravity CLI／Codex CLI／OpenCode CLI
 4. CLI 的專案目錄與對外 port
 
 接著它會產生 Gateway API key 與資料庫密碼、寫入權限 600 的 `.env`（含 `COMPOSE_PROFILES`）、啟動服務並等待健康檢查，最後建立第一位管理員並顯示一次登入用的 user key。
@@ -118,7 +118,7 @@ crates/
 └── memory-client/          `amem` client：recall／capture hook、secret 過濾、離線佇列、MCP server
 clients/                    Claude Code、Codex、Antigravity 的 plugin，以及 Hermes memory provider
 panel/                      TypeScript Monitor Panel（Hono BFF + React）
-docker/core.Dockerfile      Core 映像（內建 claude 與 agy CLI）
+docker/core.Dockerfile      Core 映像（內建 claude、agy、codex 與 opencode CLI）
 install.sh                  互動式安裝程式
 upgrade.sh                  將既有安裝升級到 0.1.1
 uninstall.sh                移除 client 或伺服器
@@ -146,6 +146,7 @@ docs/ops/                    給維護者：測試、發版、儲存搬移的內
 | `AGENT_MEMORY_DATA_DIR` | `~/.agent-memory` | 資料目錄（每個 instance 一個 SQLite） |
 | `AGENT_MEMORY_LLM_PROVIDER` | `openai` | `openai`（HTTP API）或 `cli`（本機工具） |
 | `AGENT_MEMORY_LLM_BASE_URL` / `AGENT_MEMORY_LLM_API_KEY` / `AGENT_MEMORY_LLM_MODEL` | OpenAI | provider=openai 時使用 |
+| `AGENT_MEMORY_LLM_TIMEOUT_MS` | `180000` | 單次 LLM 呼叫逾時；本機 CLI 較慢時可調大 |
 | `AGENT_MEMORY_LLM_CLI_*` | 未設定 | provider=cli 時使用，見上節 |
 | `AGENT_MEMORY_EMBEDDING_PROVIDER` 等 | `none` | 啟用向量檢索 |
 | `AGENT_MEMORY_CORS_ORIGINS` | 空 | 允許的來源（逗號分隔） |
@@ -203,22 +204,24 @@ llm:
 
 ### Docker 映像內建的 CLI
 
-`docker/core.Dockerfile` 預設以官方原生安裝腳本（不使用 npm，皆會驗證校驗碼）安裝三個 CLI，並以非 root 的服務使用者執行：
+`docker/core.Dockerfile` 預設以官方原生安裝腳本（不使用 npm，皆會驗證校驗碼）安裝四個 CLI，並以非 root 的服務使用者執行：
 
 | CLI | 指令 | 建議設定 | 登入方式 |
 | --- | --- | --- | --- |
 | Claude Code | `claude` | `ARGS=-p`、`PROMPT_MODE=stdin` | 設定 `ANTHROPIC_API_KEY`，或執行 `docker compose exec -it memory-core claude` 後輸入 `/login` |
 | Antigravity CLI | `agy` | `ARGS='["-p","{prompt}"]'`、`PROMPT_MODE=arg`（`agy -p` 不讀 stdin） | 執行 `docker compose exec -it memory-core agy`，在瀏覽器開啟顯示的 Google 登入網址 |
 | Codex CLI | `codex` | `ARGS='["exec","--skip-git-repo-check","--ephemeral","-s","read-only","-c","features.hooks=false","-"]'`、`PROMPT_MODE=stdin` | 執行 `docker compose exec -it memory-core codex login --device-auth` 並依畫面指示完成，或把 API key 以 stdin 傳給 `codex login --with-api-key` |
+| OpenCode CLI | `opencode` | `ARGS='run --pure --agent distill -m openai/gpt-4o-mini'`、`PROMPT_MODE=stdin` | 設定 `OPENAI_API_KEY`（`openai/*` 模型），或執行 `docker compose exec -it memory-core opencode auth login` |
 
-- 登入狀態存放在 named volume（`claude-config` → `~/.claude`、`antigravity-config` → `~/.gemini`、`codex-config` → `~/.codex`），重建容器不會遺失。
+- 登入狀態存放在 named volume（`claude-config` → `~/.claude`、`antigravity-config` → `~/.gemini`、`codex-config` → `~/.codex`、`opencode-config` → `~/.local/share/opencode`），重建容器不會遺失。
 - 專案目錄：以 `PROJECT_DIR` 指定主機路徑，掛載到容器的 `/workspace` 並作為 CLI 的工作目錄。
 - 未登入時，錯誤會出現在 Panel 的 worker 指標（例如 `Not logged in · Please run /login`），管線會重試。
 - `agy` 以參數傳遞 prompt，受 Linux 單一參數 128 KiB 上限限制；超過時會直接回報錯誤。
 - `agy` 需要 CPU 支援 AES-NI（虛擬機請將 CPU 型別設為 host）。
 - Codex 的參數讓它保持唯讀、不留下 session 檔，並關閉 hooks，避免為 Codex 安裝的記憶 client 把蒸餾用的 prompt 本身寫進記憶。
-- 不需要的 CLI 可在建置時略過：`--build-arg INSTALL_CLAUDE=false`、`--build-arg INSTALL_ANTIGRAVITY=false`、`--build-arg INSTALL_CODEX=false`；Claude Code 版本可用 `--build-arg CLAUDE_VERSION=latest` 或指定版本號。
-- 映像因此約 940 MB；若只用 HTTP API，建議以上述參數略過這些 CLI。
+- OpenCode 的參數一律帶 `--pure`，讓設定檔中的 plugin（例如 AgentMemory 擷取 plugin）不會對蒸餾 prompt 觸發，內建的 `distill` agent 則停用了所有工具，蒸餾呼叫不可能修改專案。OpenCode 每次呼叫都會啟動小型 server，冷啟動或模型首次載入可能較慢：請調大 `AGENT_MEMORY_LLM_TIMEOUT_MS`（安裝程式在選擇 OpenCode 時預設設為 600000）。每次呼叫也會寫入 `opencode-config` volume 內 OpenCode 自己的 session 歷史；若膨脹過大，可用 `docker compose exec memory-core sh -c 'rm -rf ~/.local/share/opencode/*'` 清理。
+- 不需要的 CLI 可在建置時略過：`--build-arg INSTALL_CLAUDE=false`、`--build-arg INSTALL_ANTIGRAVITY=false`、`--build-arg INSTALL_CODEX=false`、`--build-arg INSTALL_OPENCODE=false`；Claude Code 版本可用 `--build-arg CLAUDE_VERSION=latest` 或指定版本號，OpenCode 則用 `--build-arg OPENCODE_VERSION=<版本>`。
+- 映像因此約 1 GB；若只用 HTTP API，建議以上述參數略過這些 CLI。
 
 ## 設計取捨
 

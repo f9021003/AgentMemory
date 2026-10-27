@@ -19,7 +19,7 @@ This document is for engineers who operate, extend or integrate Agent Memory. It
 
 ## 1. System overview
 
-Agent Memory is a self-hosted memory service for AI agents. Agents send their conversations, and the service distills them in the background into facts, scenes and a persona, then hands the relevant parts back before the next turn. No vendor cloud product is required. Storage is SQLite or Postgres, and the LLM is any OpenAI-compatible endpoint or a local CLI (Claude Code, Antigravity, Codex).
+Agent Memory is a self-hosted memory service for AI agents. Agents send their conversations, and the service distills them in the background into facts, scenes and a persona, then hands the relevant parts back before the next turn. No vendor cloud product is required. Storage is SQLite or Postgres, and the LLM is any OpenAI-compatible endpoint or a local CLI (Claude Code, Antigravity, Codex, OpenCode).
 
 ```mermaid
 flowchart LR
@@ -35,7 +35,7 @@ flowchart LR
     PANEL["Monitor Panel<br/>Hono BFF + React · :8125"]
     STORE[("Storage<br/>SQLite | Postgres<br/>+ files in /data")]
     COORD[("Coordination<br/>local | Redis")]
-    LLM["LLM<br/>OpenAI-compatible API<br/>or claude / agy / codex CLI"]
+    LLM["LLM<br/>OpenAI-compatible API<br/>or claude / agy / codex / opencode CLI"]
   end
   Browser((Browser)) -- user key --> PANEL
   AMEM -- "HTTPS, x-memory-user-key" --> CORE
@@ -206,7 +206,7 @@ sequenceDiagram
 
 - The **decisions** live in `memory_domain::pipeline` and `PipelineService`. The worker only serializes jobs per session/profile, coalesces duplicates and retries.
 - **Cursors** are store-assigned sequence numbers (`after_seq`), never reused. Equal or back-dated timestamps therefore can't skip rows. The upgrade keeps them when it moves data.
-- **LLM output** must follow a strict JSON (or markdown) contract and is parsed tolerantly: `<think>` blocks and code fences are accepted. Custom memory prompts are appended inside a guard that keeps the contract. With a CLI provider, memory-core runs `claude`, `agy` or `codex exec` in `/workspace` with the prompt as an argument or on stdin.
+- **LLM output** must follow a strict JSON (or markdown) contract and is parsed tolerantly: `<think>` blocks and code fences are accepted. Custom memory prompts are appended inside a guard that keeps the contract. With a CLI provider, memory-core runs `claude`, `agy`, `codex exec` or `opencode run` in `/workspace` with the prompt as an argument or on stdin.
 - **Status** is visible at `POST /v3/pipeline/status` (queue, worker metrics, per-scope cursors) and in the Panel.
 
 ## 5. Recall
@@ -329,7 +329,7 @@ flowchart TB
   end
 ```
 
-- Docker Compose services: `memory-core`, `memory-panel`, plus `redis` and `postgres` under profiles of the same name. Volumes: `memory-core-data`, `redis-data`, `postgres-data`, `claude-config`, `antigravity-config`, `codex-config` (CLI logins), and the `PROJECT_DIR` bind mount at `/workspace` for CLI LLM providers.
+- Docker Compose services: `memory-core`, `memory-panel`, plus `redis` and `postgres` under profiles of the same name. Volumes: `memory-core-data`, `redis-data`, `postgres-data`, `claude-config`, `antigravity-config`, `codex-config`, `opencode-config` (CLI logins and OpenCode session history), and the `PROJECT_DIR` bind mount at `/workspace` for CLI LLM providers.
 - Images are tagged `memory-core:${MEMORY_IMAGE_TAG}` and `memory-panel:${MEMORY_IMAGE_TAG}` (default `local`). Give each deployment on one host its own tag; otherwise building one overwrites the other's image.
 - Multi-node needs `storage.backend = postgres`, `coordination.backend = redis`, and a shared `<data>` volume. An existing SQLite install moves over with `migrate-to-postgres.sh` ([MIGRATE-TO-POSTGRES.md](MIGRATE-TO-POSTGRES.md)).
 - Put TLS in front of port 8420 when clients connect over a network; see REMOTE-CLIENTS.md §2.

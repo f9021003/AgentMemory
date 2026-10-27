@@ -10,11 +10,12 @@
 #     -v memory-core-data:/data memory-core:local
 #
 # Bundled CLIs (official native installers, no npm; all verify checksums):
-#   claude  Claude Code      https://claude.ai/install.sh
-#   agy     Antigravity CLI  https://antigravity.google/cli/install.sh
-#   codex   Codex CLI        https://chatgpt.com/codex/install.sh
+#   claude   Claude Code      https://claude.ai/install.sh
+#   agy      Antigravity CLI  https://antigravity.google/cli/install.sh
+#   codex    Codex CLI        https://chatgpt.com/codex/install.sh
+#   opencode OpenCode CLI     https://opencode.ai/install
 # Skip any with --build-arg INSTALL_CLAUDE=false / INSTALL_ANTIGRAVITY=false /
-# INSTALL_CODEX=false.
+# INSTALL_CODEX=false / INSTALL_OPENCODE=false.
 # ──────────────────────────────────────────────────────────────────────
 
 FROM rust:1-slim-bookworm AS build
@@ -36,15 +37,18 @@ RUN apt-get update \
  && mkdir -p /data /config /workspace \
  && chown memory:memory /data /workspace
 
-# The CLIs install into the user's home (~/.local/bin) and refuse to run
-# as root, so install as the service user. The home directory is kept
-# separate from the /data volume so a mounted volume never hides them.
+# The CLIs install into the user's home (~/.local/bin, or ~/.opencode/bin for
+# opencode) and refuse to run as root, so install as the service user. The
+# home directory is kept separate from the /data volume so a mounted volume
+# never hides them.
 USER memory
-ENV PATH="/home/memory/.local/bin:${PATH}"
+ENV PATH="/home/memory/.local/bin:/home/memory/.opencode/bin:${PATH}"
 ARG INSTALL_CLAUDE=true
 ARG CLAUDE_VERSION=stable
 ARG INSTALL_ANTIGRAVITY=true
 ARG INSTALL_CODEX=true
+ARG INSTALL_OPENCODE=true
+ARG OPENCODE_VERSION=latest
 RUN set -eu; \
     if [ "$INSTALL_CLAUDE" = "true" ]; then \
       curl -fsSL https://claude.ai/install.sh -o /tmp/install-claude.sh; \
@@ -60,15 +64,71 @@ RUN set -eu; \
     fi; \
     if [ "$INSTALL_CODEX" = "true" ]; then \
       curl -fsSL https://chatgpt.com/codex/install.sh -o /tmp/install-codex.sh; \
-      # The binary goes under CODEX_HOME; keep it out of ~/.codex, where the
-      # login volume is mounted and would hide it.
+      # The binary goes under CODEX_HOME; keep it out of ~/.codex, where the \
+      # login volume is mounted and would hide it. \
       CODEX_HOME=/home/memory/.codex-cli sh /tmp/install-codex.sh; \
       rm /tmp/install-codex.sh; \
       codex --version; \
     fi; \
-    # Pre-create the login directories so volumes mounted there stay
-    # owned by the service user (Docker would create them as root).
-    mkdir -p /home/memory/.claude /home/memory/.gemini /home/memory/.codex
+    if [ "$INSTALL_OPENCODE" = "true" ]; then \
+      curl -fsSL https://opencode.ai/install -o /tmp/install-opencode.sh; \
+      if [ "$OPENCODE_VERSION" = "latest" ]; then \
+        bash /tmp/install-opencode.sh --no-modify-path; \
+      else \
+        bash /tmp/install-opencode.sh --no-modify-path --version "$OPENCODE_VERSION"; \
+      fi; \
+      rm /tmp/install-opencode.sh; \
+      opencode --version; \
+    fi; \
+    # Pre-create the login/data directories so volumes mounted there stay \
+    # owned by the service user (Docker would create them as root). OpenCode \
+    # keeps auth and session history under ~/.local/share/opencode. \
+    mkdir -p /home/memory/.claude /home/memory/.gemini /home/memory/.codex \
+      /home/memory/.local/share/opencode /home/memory/.config/opencode
+
+# Global OpenCode config: a tool-less `distill` agent used for memory
+# distillation. Every built-in tool is removed from the agent so `opencode
+# run` stays a single text turn: it can neither modify the project at
+# /workspace nor get derailed by the `skill` tool when a prompt happens to
+# contain a skill-like phrase (e.g. L1's "scene-segmentation … expert").
+# The CLI is always invoked with --pure, which stops config plugins (e.g. an
+# AgentMemory capture plugin) from firing on the distillation prompts.
+RUN printf '%s\n' \
+    '{' \
+    '  "$schema": "https://opencode.ai/config.json",' \
+    '  "agent": {' \
+    '    "distill": {' \
+    '      "description": "Text-only agent for AgentMemory distillation",' \
+    '      "mode": "primary",' \
+    '      "tools": {' \
+    '        "shell": false,' \
+    '        "read": false,' \
+    '        "glob": false,' \
+    '        "grep": false,' \
+    '        "edit": false,' \
+    '        "write": false,' \
+    '        "patch": false,' \
+    '        "task": false,' \
+    '        "fetch": false,' \
+    '        "search": false,' \
+    '        "todo": false,' \
+    '        "skill": false,' \
+    '        "question": false,' \
+    '        "lsp": false,' \
+    '        "plan": false,' \
+    '        "execute": false' \
+    '      },' \
+    '      "permission": {' \
+    '        "edit": "deny",' \
+    '        "shell": "deny",' \
+    '        "webfetch": "deny",' \
+    '        "task": "deny",' \
+    '        "question": "deny"' \
+    '      }' \
+    '    }' \
+    '  }' \
+    '}' \
+    > /home/memory/.config/opencode/opencode.json
 
 COPY --from=build /usr/local/bin/memory-server /usr/local/bin/memory-server
 COPY config/memory-core.example.yaml /config/memory-core.yaml

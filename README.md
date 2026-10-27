@@ -20,7 +20,7 @@ The installer asks, in order:
 
 1. **Storage backend**: SQLite (default, nothing to install) / existing PostgreSQL (enter a URL; the connection is tested from inside the container first) / start PostgreSQL (pgvector) for me with Docker
 2. **Coordination backend**: single node (default) / existing Redis / start Redis for me with Docker
-3. **LLM**: OpenAI-compatible API / Claude Code CLI / Antigravity CLI / Codex CLI
+3. **LLM**: OpenAI-compatible API / Claude Code CLI / Antigravity CLI / Codex CLI / OpenCode CLI
 4. Project directory for the CLI and the exposed ports
 
 It then generates a Gateway API key and database password, writes `.env` with mode 600 (including `COMPOSE_PROFILES`), starts the services and waits for the health checks, and finally creates the first admin and shows a one-time login user key.
@@ -118,7 +118,7 @@ crates/
 └── memory-client/          `amem` client: recall/capture hooks, redaction, offline queue, MCP server
 clients/                    Claude Code, Codex and Antigravity plugins, Hermes memory provider
 panel/                      TypeScript Monitor Panel (Hono BFF + React)
-docker/core.Dockerfile      Core image (bundles the claude and agy CLIs)
+docker/core.Dockerfile      Core image (bundles the claude, agy, codex and opencode CLIs)
 install.sh                  Interactive installer
 upgrade.sh                  Upgrade an existing install to 0.1.1
 uninstall.sh                Remove the client or the server
@@ -146,6 +146,7 @@ Config file keys (`server`, `data`, `llm`, `memory.pipeline`, `memory.recall`, `
 | `AGENT_MEMORY_DATA_DIR` | `~/.agent-memory` | Data directory (one SQLite per instance) |
 | `AGENT_MEMORY_LLM_PROVIDER` | `openai` | `openai` (HTTP API) or `cli` (local tool) |
 | `AGENT_MEMORY_LLM_BASE_URL` / `AGENT_MEMORY_LLM_API_KEY` / `AGENT_MEMORY_LLM_MODEL` | OpenAI | Used when provider=openai |
+| `AGENT_MEMORY_LLM_TIMEOUT_MS` | `180000` | Per-call LLM timeout; raise it for slow local CLIs |
 | `AGENT_MEMORY_LLM_CLI_*` | Unset | Used when provider=cli; see "Using a Local CLI as the LLM" |
 | `AGENT_MEMORY_EMBEDDING_PROVIDER` etc. | `none` | Enables vector retrieval |
 | `AGENT_MEMORY_CORS_ORIGINS` | Empty | Allowed origins (comma-separated) |
@@ -203,22 +204,24 @@ Equivalent environment variables: `AGENT_MEMORY_LLM_PROVIDER=cli`, `AGENT_MEMORY
 
 ### CLIs Bundled in the Docker Image
 
-By default `docker/core.Dockerfile` installs three CLIs with their official native install scripts (no npm; checksums verified), and runs them as a non-root service user:
+By default `docker/core.Dockerfile` installs four CLIs with their official native install scripts (no npm; checksums verified), and runs them as a non-root service user:
 
 | CLI | Command | Recommended settings | Login |
 | --- | --- | --- | --- |
 | Claude Code | `claude` | `ARGS=-p`, `PROMPT_MODE=stdin` | Set `ANTHROPIC_API_KEY`, or run `docker compose exec -it memory-core claude` and enter `/login` |
 | Antigravity CLI | `agy` | `ARGS='["-p","{prompt}"]'`, `PROMPT_MODE=arg` (`agy -p` doesn't read stdin) | Run `docker compose exec -it memory-core agy` and open the displayed Google sign-in URL in a browser |
 | Codex CLI | `codex` | `ARGS='["exec","--skip-git-repo-check","--ephemeral","-s","read-only","-c","features.hooks=false","-"]'`, `PROMPT_MODE=stdin` | Run `docker compose exec -it memory-core codex login --device-auth` and follow the printed steps, or pipe an API key into `codex login --with-api-key` |
+| OpenCode CLI | `opencode` | `ARGS='run --pure --agent distill -m openai/gpt-4o-mini'`, `PROMPT_MODE=stdin` | Set `OPENAI_API_KEY` (for an `openai/*` model), or run `docker compose exec -it memory-core opencode auth login` |
 
-- Login state is stored in named volumes (`claude-config` → `~/.claude`, `antigravity-config` → `~/.gemini`, `codex-config` → `~/.codex`), so it survives container rebuilds.
+- Login state is stored in named volumes (`claude-config` → `~/.claude`, `antigravity-config` → `~/.gemini`, `codex-config` → `~/.codex`, `opencode-config` → `~/.local/share/opencode`), so it survives container rebuilds.
 - Project directory: set the host path with `PROJECT_DIR`; it is mounted at `/workspace` in the container and used as the CLI's working directory.
 - When not logged in, the error shows up in the Panel's worker metrics (e.g. `Not logged in · Please run /login`), and the pipeline retries.
 - `agy` receives the prompt as an argument, so it is subject to Linux's 128 KiB single-argument limit; prompts beyond that fail with an error.
 - `agy` requires a CPU with AES-NI (in VMs, set the CPU type to host).
 - The Codex arguments keep it read-only, leave no session file, and turn hooks off, so a memory client installed for Codex never captures the distillation prompts themselves.
-- Skip CLIs you don't need at build time: `--build-arg INSTALL_CLAUDE=false`, `--build-arg INSTALL_ANTIGRAVITY=false`, `--build-arg INSTALL_CODEX=false`; pin the Claude Code version with `--build-arg CLAUDE_VERSION=latest` or a specific version number.
-- As a result the image is about 940 MB; if you only use the HTTP API, skip the CLIs with the arguments above.
+- The OpenCode arguments always pass `--pure`, which stops config plugins (such as the AgentMemory capture plugin) from firing on the distillation prompts, and the built-in `distill` agent has every tool denied, so a distillation call can never modify the project. OpenCode boots a small server on every call and can be slow on cold model loads: raise `AGENT_MEMORY_LLM_TIMEOUT_MS` (the installer defaults it to 600000 when OpenCode is chosen). Each call also appends to OpenCode's own session history in the `opencode-config` volume; prune it with `docker compose exec memory-core sh -c 'rm -rf ~/.local/share/opencode/*'` if it grows too large.
+- Skip CLIs you don't need at build time: `--build-arg INSTALL_CLAUDE=false`, `--build-arg INSTALL_ANTIGRAVITY=false`, `--build-arg INSTALL_CODEX=false`, `--build-arg INSTALL_OPENCODE=false`; pin the Claude Code version with `--build-arg CLAUDE_VERSION=latest` or a specific version number, and the OpenCode version with `--build-arg OPENCODE_VERSION=<version>`.
+- As a result the image is about 1 GB; if you only use the HTTP API, skip the CLIs with the arguments above.
 
 ## Design Trade-offs
 

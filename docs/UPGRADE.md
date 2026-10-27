@@ -239,4 +239,4 @@ Point the clients back at their old configuration as well.
 | Clients get `403 not a member` | The user is not in the team. Add them in the Panel, under Teams → members |
 | `upgrade.sh`: `No .env here` | Run it from the existing install directory, not from a fresh clone |
 | Lost the key the upgrade printed | It is in `upgrade-client-settings.txt`. Or run `./upgrade.sh` again: nothing moves twice, and a new key is issued |
-| The Claude/Antigravity/Codex distillation login is gone | It is stored in the `claude-config` / `antigravity-config` / `codex-config` volumes, which the upgrade keeps. If you ran `docker compose down -v`, log in again: `docker compose exec -it memory-core agy` (or `claude`, or `codex login --device-auth`) |
+| The Claude/Antigravity/Codex/OpenCode distillation login is gone | It is stored in the `claude-config` / `antigravity-config` / `codex-config` / `opencode-config` volumes, which the upgrade keeps. If you ran `docker compose down -v`, log in again: `docker compose exec -it memory-core agy` (or `claude`, or `codex login --device-auth`, or `opencode auth login`) |

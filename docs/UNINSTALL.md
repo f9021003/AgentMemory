@@ -23,7 +23,7 @@ Agent Memory has two parts that are removed separately. The **client** lives on 
 | --- | --- |
 | `--dry-run` | Only print what would be removed |
 | `--yes` | Do not ask before each part. `--purge-data` then skips its confirmation too |
-| `--purge-data` | `server` only: also delete the Docker volumes (memories, users, keys, Claude/Antigravity/Codex CLI logins) |
+| `--purge-data` | `server` only: also delete the Docker volumes (memories, users, keys, Claude/Antigravity/Codex/OpenCode CLI logins) |
 
 Run the script from a checkout of this repository. Anything that isn't installed is skipped, so running it twice is harmless.
 
@@ -65,7 +65,7 @@ What happens:
 
 1. All containers of this install stop and are removed: memory-core, the Panel, and Postgres and Redis if you use those profiles. By hand: `docker compose --profile postgres --profile redis down --remove-orphans`.
 2. The images built for it are removed: `memory-core:<MEMORY_IMAGE_TAG>` and `memory-panel:<MEMORY_IMAGE_TAG>`, where the tag defaults to `local`. By hand: `docker image rm memory-core:local memory-panel:local`. If another deployment still uses an image because it has the same tag, the image is kept and the script tells you.
-3. **The data volumes are kept.** These hold the memories, users, keys and the Claude/Antigravity CLI logins. Running `./install.sh` again in the same directory, and choosing to reuse `.env`, brings everything back.
+3. **The data volumes are kept.** These hold the memories, users, keys and the Claude/Antigravity/OpenCode CLI logins. Running `./install.sh` again in the same directory, and choosing to reuse `.env`, brings everything back.
 
 ### Delete the data too
 

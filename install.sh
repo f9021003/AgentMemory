@@ -10,11 +10,12 @@
 # Non-interactive variables (all optional):
 #   INSTALL_STORAGE        sqlite | postgres-docker | postgres-url   (default sqlite)
 #   INSTALL_COORDINATION   local | redis-docker | redis-url          (default local)
-#   INSTALL_LLM            openai | claude | antigravity | codex     (default openai)
+#   INSTALL_LLM            openai | claude | antigravity | codex |
+#                          opencode                                (default openai)
 #   INSTALL_ADMIN_NAME     first administrator's username            (default admin)
 #   AGENT_MEMORY_POSTGRES_URL, AGENT_MEMORY_REDIS_URL, AGENT_MEMORY_LLM_BASE_URL,
 #   AGENT_MEMORY_LLM_API_KEY, AGENT_MEMORY_LLM_MODEL, ANTHROPIC_API_KEY,
-#   PROJECT_DIR, CORE_PORT, PANEL_PORT, MEMORY_IMAGE_TAG
+#   OPENAI_API_KEY, PROJECT_DIR, CORE_PORT, PANEL_PORT, MEMORY_IMAGE_TAG
 # ──────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -236,7 +237,8 @@ configure_llm() {
     "openai|OpenAI-compatible HTTP API (base URL + API key; works with self-hosted models)" \
     "claude|Claude Code CLI (bundled in the image)" \
     "antigravity|Antigravity CLI (bundled in the image)" \
-    "codex|Codex CLI (bundled in the image)"
+    "codex|Codex CLI (bundled in the image)" \
+    "opencode|OpenCode CLI (bundled in the image)"
   LLM_PROVIDER=openai
   LLM_CLI_COMMAND="" LLM_CLI_ARGS="" LLM_CLI_PROMPT_MODE=stdin
   case $INSTALL_LLM in
@@ -257,6 +259,18 @@ configure_llm() {
       # for Codex must never capture the distillation prompts themselves.
       LLM_PROVIDER=cli LLM_CLI_COMMAND=codex
       LLM_CLI_ARGS='["exec","--skip-git-repo-check","--ephemeral","-s","read-only","-c","features.hooks=false","-"]'
+      ;;
+    opencode)
+      # --pure keeps config plugins (e.g. an AgentMemory capture plugin)
+      # from firing on the distillation prompts, and the built-in `distill`
+      # agent has every tool denied, so it can never touch the project.
+      LLM_PROVIDER=cli LLM_CLI_COMMAND=opencode
+      ask AGENT_MEMORY_LLM_MODEL "OpenCode model (provider/model)" "${AGENT_MEMORY_LLM_MODEL:-openai/gpt-4o-mini}"
+      LLM_CLI_ARGS="run --pure --agent distill -m $AGENT_MEMORY_LLM_MODEL"
+      ask_secret OPENAI_API_KEY "OPENAI_API_KEY for the openai/* provider (leave empty to use another provider)"
+      # OpenCode boots a small server per call and can be slower than a
+      # plain HTTP API; raise the shared LLM timeout from the 180s default.
+      ask AGENT_MEMORY_LLM_TIMEOUT_MS "LLM timeout in milliseconds" "${AGENT_MEMORY_LLM_TIMEOUT_MS:-600000}"
       ;;
     *) fail "Unknown INSTALL_LLM: $INSTALL_LLM" ;;
   esac
@@ -317,7 +331,9 @@ AGENT_MEMORY_LLM_MODEL=${AGENT_MEMORY_LLM_MODEL:-gpt-4o-mini}
 AGENT_MEMORY_LLM_CLI_COMMAND=$LLM_CLI_COMMAND
 AGENT_MEMORY_LLM_CLI_ARGS=$LLM_CLI_ARGS
 AGENT_MEMORY_LLM_CLI_PROMPT_MODE=$LLM_CLI_PROMPT_MODE
+AGENT_MEMORY_LLM_TIMEOUT_MS=${AGENT_MEMORY_LLM_TIMEOUT_MS:-}
 ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+OPENAI_API_KEY=${OPENAI_API_KEY:-}
 PROJECT_DIR=${PROJECT_DIR:-./workspace}
 
 AGENT_MEMORY_EMBEDDING_PROVIDER=none
@@ -381,6 +397,10 @@ print_summary() {
       info "Log in to Codex once: docker compose exec -it memory-core codex login --device-auth"
       info "  (or with an API key: docker compose exec -T memory-core codex login --with-api-key < key-file)"
       ;;
+    opencode)
+      [[ -z ${OPENAI_API_KEY:-} ]] && info "Provide OpenCode credentials: add OPENAI_API_KEY (openai/* model) to $ENV_FILE,"
+      info "  or log in once: docker compose exec -it memory-core opencode auth login"
+      ;;
     openai)
       [[ -z ${AGENT_MEMORY_LLM_API_KEY:-} ]] && warn "No LLM API key yet: memories are stored but not distilled until you add AGENT_MEMORY_LLM_API_KEY to $ENV_FILE and run 'docker compose up -d'."
       ;;
@@ -409,6 +429,7 @@ main() {
         claude) INSTALL_LLM=claude ;;
         agy) INSTALL_LLM=antigravity ;;
         codex) INSTALL_LLM=codex ;;
+        opencode) INSTALL_LLM=opencode ;;
         *) INSTALL_LLM=openai ;;
       esac
       start_services

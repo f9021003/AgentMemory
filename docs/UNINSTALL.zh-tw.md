@@ -23,7 +23,7 @@ Agent Memory 分成兩部分，要分開移除：**client** 裝在每台跑 agen
 | --- | --- |
 | `--dry-run` | 只列出會移除哪些東西，不實際刪除 |
 | `--yes` | 不逐一詢問；搭配 `--purge-data` 時也會略過它的確認 |
-| `--purge-data` | 只用於 `server`：連 Docker volume（記憶、使用者、key、Claude/Antigravity/Codex CLI 登入）一起刪除 |
+| `--purge-data` | 只用於 `server`：連 Docker volume（記憶、使用者、key、Claude/Antigravity/Codex/OpenCode CLI 登入）一起刪除 |
 
 請在本 repository 的 checkout 目錄下執行。沒有安裝的部分會直接略過，所以重複執行也沒關係。
 
@@ -65,7 +65,7 @@ Agent Memory 分成兩部分，要分開移除：**client** 裝在每台跑 agen
 
 1. 停止並刪除這套安裝的所有容器：memory-core、Panel，以及有啟用 profile 時的 Postgres、Redis。手動做法：`docker compose --profile postgres --profile redis down --remove-orphans`。
 2. 刪除為這套安裝 build 的映像：`memory-core:<MEMORY_IMAGE_TAG>` 和 `memory-panel:<MEMORY_IMAGE_TAG>`，tag 預設是 `local`。手動做法：`docker image rm memory-core:local memory-panel:local`。若另一套部署用了相同的 tag、還在使用這個映像，腳本會保留它並提示你。
-3. **保留資料 volume**：裡面是記憶、使用者、key，以及 Claude／Antigravity CLI 的登入資料。之後在同一個目錄再執行一次 `./install.sh`，並選擇沿用 `.env`，就能全部恢復。
+3. **保留資料 volume**：裡面是記憶、使用者、key，以及 Claude／Antigravity／OpenCode CLI 的登入資料。之後在同一個目錄再執行一次 `./install.sh`，並選擇沿用 `.env`，就能全部恢復。
 
 ### 連資料一起刪除
 

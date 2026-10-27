@@ -239,4 +239,4 @@ Client 也要改回原本的設定。
 | Client 收到 `403 not a member` | 該使用者不在這個 team。請在 Panel 的 Teams → members 加入 |
 | `upgrade.sh` 顯示 `No .env here` | 請在既有的安裝目錄執行，不是在新 clone 的目錄 |
 | 升級時印出的 key 遺失 | 存在 `upgrade-client-settings.txt`。也可以再跑一次 `./upgrade.sh`：資料不會重複搬，並會發一把新的 key |
-| 用 Claude/Antigravity/Codex 蒸餾的登入狀態不見了 | 登入資料存在 `claude-config` / `antigravity-config` / `codex-config` volume，升級會保留。若你執行過 `docker compose down -v`，請重新登入：`docker compose exec -it memory-core agy`（或 `claude`、`codex login --device-auth`） |
+| 用 Claude/Antigravity/Codex/OpenCode 蒸餾的登入狀態不見了 | 登入資料存在 `claude-config` / `antigravity-config` / `codex-config` / `opencode-config` volume，升級會保留。若你執行過 `docker compose down -v`，請重新登入：`docker compose exec -it memory-core agy`（或 `claude`、`codex login --device-auth`、`opencode auth login`） |

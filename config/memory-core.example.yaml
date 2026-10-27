@@ -20,9 +20,9 @@ llm:
   apiKey: "${AGENT_MEMORY_LLM_API_KEY:-}"
   model: "${AGENT_MEMORY_LLM_MODEL:-gpt-4o-mini}"
   maxTokens: 8192
-  timeoutMs: 180000           # also the per-call timeout of the CLI provider
+  timeoutMs: ${AGENT_MEMORY_LLM_TIMEOUT_MS:-180000}  # also the per-call timeout of the CLI provider
   cli:
-    command: ""               # e.g. "claude" or "ollama"
+    command: ""               # e.g. "claude", "opencode" or "ollama"
     args: []                  # e.g. ["-p"] or ["run", "llama3.1"]
     promptMode: "stdin"       # "stdin", or "arg" to substitute {prompt} in args
     # workingDir: "~/projects/my-app"   # project base path the tool runs in

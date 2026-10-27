@@ -21,12 +21,18 @@ services:
       AGENT_MEMORY_LLM_BASE_URL: ${AGENT_MEMORY_LLM_BASE_URL:-https://api.openai.com/v1}
       AGENT_MEMORY_LLM_API_KEY: ${AGENT_MEMORY_LLM_API_KEY:-}
       AGENT_MEMORY_LLM_MODEL: ${AGENT_MEMORY_LLM_MODEL:-gpt-4o-mini}
-      # provider=cli: the image bundles `claude` and `agy` (Antigravity).
+      # provider=cli: the image bundles `claude`, `agy` (Antigravity),
+      # `codex` and `opencode`.
       AGENT_MEMORY_LLM_CLI_COMMAND: ${AGENT_MEMORY_LLM_CLI_COMMAND:-}
       AGENT_MEMORY_LLM_CLI_ARGS: ${AGENT_MEMORY_LLM_CLI_ARGS:-}
       AGENT_MEMORY_LLM_CLI_PROMPT_MODE: ${AGENT_MEMORY_LLM_CLI_PROMPT_MODE:-stdin}
-      AGENT_MEMORY_LLM_CLI_WORKDIR: /workspace
+      AGENT_MEMORY_LLM_CLI_WORKDIR: ${AGENT_MEMORY_LLM_CLI_WORKDIR:-/workspace}
+      # Shared LLM call timeout; raise it for slow local CLIs (e.g. opencode).
+      AGENT_MEMORY_LLM_TIMEOUT_MS: ${AGENT_MEMORY_LLM_TIMEOUT_MS:-}
+      # Per-CLI credentials: Claude Code, and OpenCode when its model is
+      # openai/*.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       AGENT_MEMORY_EMBEDDING_PROVIDER: ${AGENT_MEMORY_EMBEDDING_PROVIDER:-none}
       AGENT_MEMORY_EMBEDDING_BASE_URL: ${AGENT_MEMORY_EMBEDDING_BASE_URL:-}
       AGENT_MEMORY_EMBEDDING_API_KEY: ${AGENT_MEMORY_EMBEDDING_API_KEY:-}
@@ -61,6 +67,8 @@ services:
       - claude-config:/home/memory/.claude
       - antigravity-config:/home/memory/.gemini
       - codex-config:/home/memory/.codex
+      # OpenCode auth (auth.json) and its per-session history database.
+      - opencode-config:/home/memory/.local/share/opencode
     restart: unless-stopped
 
   memory-panel:
@@ -118,3 +126,4 @@ volumes:
   claude-config:
   antigravity-config:
   codex-config:
+  opencode-config:
